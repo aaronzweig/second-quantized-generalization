@@ -42,13 +42,15 @@ class PoolNet(nn.Module):
 from cgconv import CGConv
     
 class SecondNet(nn.Module):
-    def __init__(self, vertex_dim, edge_dim, hidden_dim, normalize = False, add_self_loops = False):        
+    def __init__(self, vertex_dim, edge_dim, hidden_dim, p = 0.0, normalize = False, add_self_loops = False):        
         super(SecondNet, self).__init__()
     
         #TODO: Try NNConv / our edge-attention network
     
         self.conv1 = CGConv(vertex_dim, hidden_dim, edge_dim)
         self.conv2 = CGConv(hidden_dim, hidden_dim, edge_dim)
+
+        self.dropout = nn.Dropout(p)
         
         self.pool = PoolNet(hidden_dim, hidden_dim)
         self.l1 = nn.Linear(hidden_dim, hidden_dim)
@@ -62,6 +64,7 @@ class SecondNet(nn.Module):
 #         x = self.pool(x, data.batch)
         x = global_add_pool(x, data.batch)
         x = F.relu(self.l1(x))
+        x = self.dropout(x)
         x = self.l2(x)
         
         return x.squeeze(1)

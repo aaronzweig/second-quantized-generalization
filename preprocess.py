@@ -61,7 +61,7 @@ def concat(arr):
 #X is additional orbital feature matrix: M x F_1
 #Y is additional pairwise orbital feature matrix: M x M x F_2
 
-def build_graph(A, U, X, Y):
+def build_graph(A, U, X, Y, epsilon = 0.0):
     
     M = X.shape[0]
     F_1 = X.shape[1]
@@ -97,7 +97,8 @@ def build_graph(A, U, X, Y):
                     v_single = (l == M)
 
                     if not u_single and not v_single:
-                        features = [np.zeros(F_2), 0, U[i,j,k,l]]
+                        coulomb = 0 if np.abs(U[i,j,k,l]) < epsilon else U[i,j,k,l]
+                        features = [np.zeros(F_2), 0, coulomb]
                     elif u_single and v_single:
                         features = [Y[i,k], A[i,k], 0]
                                                 
