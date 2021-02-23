@@ -32,7 +32,7 @@ def build_qm7(basis):
         mol.symmetry = False
         mol.spin = 0
         mol.basis = basis
-        mol.unit = "Bohr" #QM7b coordinate unit
+        mol.unit = "Bohr" #QM7 coordinate unit
 
         mols.append(mol)
     return mols
@@ -61,7 +61,7 @@ def concat(arr):
 #X is additional orbital feature matrix: M x F_1
 #Y is additional pairwise orbital feature matrix: M x M x F_2
 
-def build_graph(A, U, X, Y, epsilon = 0.0):
+def build_graph(A, U, X, Y, epsilon = 0.0, MO = False):
     
     M = X.shape[0]
     F_1 = X.shape[1]
