@@ -42,7 +42,7 @@ class PoolNet(nn.Module):
 from cgconv import CGConv
     
 class SecondNet(nn.Module):
-    def __init__(self, vertex_dim, edge_dim, hidden_dim, p = 0.0, normalize = False, add_self_loops = False):        
+    def __init__(self, vertex_dim, edge_dim, hidden_dim, p = 0.0):        
         super(SecondNet, self).__init__()
     
         #TODO: Try NNConv / our edge-attention network
@@ -62,12 +62,17 @@ class SecondNet(nn.Module):
         x = self.conv2(x, data.edge_index, data.edge_attr)
         
 #         x = self.pool(x, data.batch)
-        x = global_add_pool(x, data.batch)
+#         x = global_add_pool(x, data.batch)
         x = F.relu(self.l1(x))
         x = self.dropout(x)
         x = self.l2(x)
         
         return x.squeeze(1)
+    
+    def forward_energy(self, data):
+        x = self.forward(data)
+        x = global_add_pool(x * data.mask, data.batch)
+        return 0.25 * x
     
 class SimpleNet(nn.Module):
     def __init__(self, vertex_dim, edge_dim, hidden_dim, p = 0.0):        
@@ -88,8 +93,11 @@ class SimpleNet(nn.Module):
         x = self.dropout(x)
         x = F.relu(self.l3(x))
         x = self.l4(x)
-        
-        x = global_add_pool(x, data.batch)
-        
+                
         return x.squeeze(1)
+    
+    def forward_energy(self, data):
+        x = self.forward(data)
+        x = global_add_pool(x * data.mask, data.batch)
+        return 0.25 * x
     

@@ -13,8 +13,11 @@ def get_orthoAO(S, LINDEP_CUTOFF=1e-14):
 
 def save_data(mols, filename, force = False):
     
-    if not force and path.exists(filename):
-        return
+    if path.exists(filename):
+        if not force:
+            return
+        else:
+            os.remove(filename)
     
     data = []
     
@@ -68,7 +71,7 @@ def save_data(mols, filename, force = False):
         
         emp2 = .25 * np.einsum('iajb,iajb,iajb->', g, g, de)
         
-        dump = (hcore, eri_ao, rdm1_ao, fock_ao, hmo, eri_mo, rdm1_mo, mo_occ, pair, E, emp2)
+        dump = (hcore, eri_ao, rdm1_ao, fock_ao, hmo, eri_mo, rdm1_mo, mo_occ, mo_energy, pair, E, emp2)
         data.append(dump)
     
     with open(filename, 'wb') as f:
@@ -83,14 +86,14 @@ def load_data(filename, orbital_type = "AO"):
     new_data = []
     
     for dump in data:
-        hcore, eri_ao, rdm1_ao, fock_ao, hmo, eri_mo, rdm1_mo, mo_occ, pair, E, emp2 = dump
+        hcore, eri_ao, rdm1_ao, fock_ao, hmo, eri_mo, rdm1_mo, mo_occ, mo_energy, pair, E, emp2 = dump
         
         if orbital_type == "AO":
             new_dump = (hcore, eri_ao, None, np.stack([rdm1_ao, fock_ao], axis = 2), E)
         else:
             mo_occ[mo_occ>0] = 1
             double_occupied = np.outer(mo_occ, mo_occ)
-            new_dump = (hmo, eri_mo, None, np.stack([rdm1_mo, fock_ao, double_occupied]), pair, emp2)
+            new_dump = (hmo, eri_mo, np.stack([mo_occ, mo_energy], axis = 1), np.stack([rdm1_mo, fock_ao, double_occupied], axis = 2), pair, emp2, mo_occ)
         new_data.append(new_dump)
     return new_data
 

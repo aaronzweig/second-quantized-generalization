@@ -4,6 +4,7 @@ from torch_geometric.utils.convert import from_scipy_sparse_matrix
 from scipy import sparse
 from scipy.io import loadmat
 from pyscf import gto, scf, tools, ao2mo
+from torch_geometric.data import Data, DataLoader
 
 def build_qm7(basis):
     x = loadmat('qm7.mat')
@@ -61,15 +62,19 @@ def concat(arr):
 #X is additional orbital feature matrix: M x F_1
 #Y is additional pairwise orbital feature matrix: M x M x F_2
 
-def build_graph(A, U, X, Y, epsilon = 0.0, MO = False):
+#P is pair correlation energies: n_occ x n_occ
+#E is total correlation energy
+#mo_occ indicates which orbitals are occupied
+
+def build_graph(A, U, X, Y, P, E, mo_occ, epsilon = 0.0):
     
     M = X.shape[0]
     F_1 = X.shape[1]
     F_2 = Y.shape[2]
 
     V = int((M+1)*(M+2)/2)
-    W = np.zeros((V, V, F_2 + 2))
-    # (pair features, potential, coulomb)
+    W = np.zeros((V, V, F_2 + 4))
+    # (pair features, potential, coulomb, first orbital match, second orbital match)
     
     Z = np.zeros((V, F_1 + F_2 + 3))
     # (singleton features, pair features, potential, single-orbital indicator, duplicate-orbital indicator)
@@ -78,6 +83,8 @@ def build_graph(A, U, X, Y, epsilon = 0.0, MO = False):
     #(i, j) indicates a vertex for orbital pair i-j where i < j
     #(i, M) indicates a vertex for the single orbital i
     
+    new_P = np.zeros(V)
+    mask = np.zeros(V)
     
     for i in range(M):
         for j in range(i, M+1):
@@ -87,6 +94,13 @@ def build_graph(A, U, X, Y, epsilon = 0.0, MO = False):
             if not u_single:
                 duplicate = 1 if i == j else 0
                 features = [np.zeros(F_1), Y[i,j], A[i,j], 0, duplicate]
+                
+                #occupied orbitals occur first
+                #NOTE: this assumes a particular MP2 setup
+                if i < np.sum(mo_occ) and j < np.sum(mo_occ):
+                    new_P[u] = P[i,j] if i == j else 2 * P[i,j] #double off-diagonal terms to compensate for vertex symmetry
+                    mask[u] = 1
+                    
             else:
                 features = [X[i], np.zeros(F_2), 0, 1, 0]
             Z[u] = concat(features)
@@ -98,24 +112,24 @@ def build_graph(A, U, X, Y, epsilon = 0.0, MO = False):
 
                     if not u_single and not v_single:
                         coulomb = 0 if np.abs(U[i,j,k,l]) < epsilon else U[i,j,k,l]
-                        features = [np.zeros(F_2), 0, coulomb]
+                        features = [np.zeros(F_2), 0, coulomb, 0, 0]
                     elif u_single and v_single:
-                        features = [Y[i,k], A[i,k], 0]
+                        features = [Y[i,k], A[i,k], 0, 0, 0]
                                                 
                     elif u_single and not v_single:
                         if i == k:
-                            features = [np.zeros(F_2), 0, 0]
+                            features = [np.zeros(F_2), 0, 0, 1, 0]
                         elif i == l:
-                            features = [np.zeros(F_2), 0, 0]
+                            features = [np.zeros(F_2), 0, 0, 0, 1]
                         else:
-                            features = np.zeros(F_2 + 2)
+                            features = np.zeros(F_2 + 4)
                     elif not u_single and v_single:
                         if k == i:
-                            features = [np.zeros(F_2), 0, 0]
+                            features = [np.zeros(F_2), 0, 0, 1, 0]
                         elif k == j:
-                            features = [np.zeros(F_2), 0, 0]
+                            features = [np.zeros(F_2), 0, 0, 0, 1]
                         else:
-                            features = np.zeros(F_2 + 2)
+                            features = np.zeros(F_2 + 4)
                     
                     W[u,v] = concat(features)
                     
@@ -130,4 +144,12 @@ def build_graph(A, U, X, Y, epsilon = 0.0, MO = False):
     edge_attr = W[(edge_index[0], edge_index[1])]
     edge_attr = torch.from_numpy(edge_attr)
     
-    return x, edge_index, edge_attr
+    new_P = torch.from_numpy(new_P)
+    mask = torch.from_numpy(mask)
+    
+#     print(np.dot(new_P, mask) * 0.25)
+#     print(E)
+    
+    data = Data(x = x, edge_index = edge_index, edge_attr = edge_attr, y = new_P, E = E, mask = mask)
+    
+    return data
