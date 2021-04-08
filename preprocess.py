@@ -54,102 +54,173 @@ def concat(arr):
     return np.concatenate(arr)
 
 
+
+
+
+
 #M: total number of orbitals
 #N: total number of particles
+#n: number of grid points
 
-#A is potential matrix: M x M
-#U is coulumb 4-tensor: M x M x M x M
-#X is additional orbital feature matrix: M x F_1
-#Y is additional pairwise orbital feature matrix: M x M x F_2
+#X is THC matrix: M x n
+#Z is THC matrix: n x n
 
-#P is pair correlation energies: n_occ x n_occ
-#E is total correlation energy
-#mo_occ indicates which orbitals are occupied
+#F1 is additional orbital feature matrix: M x L1
+#F2 is additional pairwise orbital feature matrix: M x M x L2
+#F3 is additional pairwise grid point feature matrix: n x n x L3
 
-def build_graph(A, U, X, Y, P, E, mo_occ, epsilon = 0.0):
+#Vertex type:
+#Type 0 = v_ij (two MOs)
+#Type 1 = v_iP (one MO, one grid point)
+#Type 2 = v_PQ (two grid points)
+
+
+#E is pair correlation energies: N x (M - N)
+#MP2 is total correlation energy
+
+#NOTE: Assume the first N orbitals are the occupied ones
+#TODO: Sparisfy the edge building
+#TODO: Make sure same-index features (i.e. identity) are included in F2 and F3
+#NOTE: Careful about getting X and Z masks, and reshaping them out of the indices at the end
+
+def build_thc_graph(X, Z, F1, F2, F3, T, E, MP2):
     
     M = X.shape[0]
-    F_1 = X.shape[1]
-    F_2 = Y.shape[2]
+    N = E.shape[0]
+    n = Z.shape[0]
+    
+    L1 = F1.shape[1]
+    L2 = F2.shape[2]
+    L3 = F3.shape[2]
+    
+    def thc_vertex_index(i, j, typ):
+        if typ == 0:
+            i, j = min(i,j), max(i,j)
+            index = vertex_index(i, j, M)
+        elif typ == 1:
+            P = j
+            index = M*(M+1)/2 + i * n + P
+        elif typ == 2:
+            P, Q = min(i,j), max(i,j)
+            index = M*(M+1)/2 + M * n + vertex_index(P, Q, n)
+        else:
+            index = -999
+        return int(index)
+        
+### TEST
+#     for i in range(M):
+#         for j in range(i,M):
+#             v = thc_vertex_index(i,j,0)
+#             print(v)
 
-    V = int((M+1)*(M+2)/2)
-    W = np.zeros((V, V, F_2 + 4))
-    # (pair features, potential, coulomb, first orbital match, second orbital match)
-    
-    Z = np.zeros((V, F_1 + F_2 + 3))
-    # (singleton features, pair features, potential, single-orbital indicator, duplicate-orbital indicator)
+#     for i in range(M):
+#         for P in range(n):
+#             v = thc_vertex_index(i,P,1)
+#             print(v)
 
+#     for P in range(n):
+#         for Q in range(P,n):
+#             v = thc_vertex_index(Q, P, 2)
+#             print(v)
     
-    #(i, j) indicates a vertex for orbital pair i-j where i < j
-    #(i, M) indicates a vertex for the single orbital i
+    V_F = L1 + L1 + L2 + L3 + 3 + 1 + 1
+    # F1_i, F1_j, F2, F3, type, X, Z
+    E_F = L2 + L3 + 1 + 1
+    # F2, F3, X, Z
     
-    new_P = np.zeros(V)
-    mask = np.zeros(V)
+    
+    V = int(M*(M+1)/2 + M * n + n*(n+1)/2)
+    
+    G_V = np.zeros((V, V_F))
+    G_E = np.zeros((V, V, E_F))
+    
+    X_mask = np.zeros(V, dtype=bool)
+    Z_mask = np.zeros(V, dtype=bool)
+    
+    ### build vertices ###
+    
+    typ_arr = np.array([1, 0, 0])
+    for i in range(M):
+        for j in range(i,M):
+            v = thc_vertex_index(i, j, 0)
+            features = [F1[i], F1[j], F2[i,j], np.zeros(L3), typ_arr, 0, 0]
+            G_V[v] = concat(features)
+    
+    typ_arr = np.array([0, 1, 0])
+    for i in range(M):
+        for P in range(n):
+            v = thc_vertex_index(i, P, 1)
+            features = [F1[i], np.zeros(L1), np.zeros(L2), np.zeros(L3), typ_arr, X[i,P], 0]
+            G_V[v] = concat(features)
+            X_mask[v] = True
+    
+    typ_arr = np.array([0, 0, 1])
+    for P in range(n):
+        for Q in range(P,n):
+            v = thc_vertex_index(P, Q, 2)
+            features = [np.zeros(L1), np.zeros(L1), np.zeros(L2), F3[P,Q], typ_arr, 0, Z[P,Q]]
+            G_V[v] = concat(features)
+            Z_mask[v] = True
+
+            
+            
+    ### build edges ###
+    #TODO: Probably could squeeze some factors of 2 by not being redundant with edges?
     
     for i in range(M):
-        for j in range(i, M+1):
-            u = vertex_index(i,j,M+1)
-            u_single = (j == M)
-            
-            if not u_single:
-                duplicate = 1 if i == j else 0
-                features = [np.zeros(F_1), Y[i,j], A[i,j], 0, duplicate]
-                
-                #occupied orbitals occur first
-                #NOTE: this assumes a particular MP2 setup
-                if i < np.sum(mo_occ) and j < np.sum(mo_occ):
-                    new_P[u] = P[i,j] if i == j else 2 * P[i,j] #double off-diagonal terms to compensate for vertex symmetry
-                    mask[u] = 1
-                    
-            else:
-                features = [X[i], np.zeros(F_2), 0, 1, 0]
-            Z[u] = concat(features)
-                
+        for j in range(M):
+            v = thc_vertex_index(i, j, 0)
             for k in range(M):
-                for l in range(k, M+1):
-                    v = vertex_index(k,l,M+1)
-                    v_single = (l == M)
+                #(i,j) - (j,k)
+                u = thc_vertex_index(j, k, 0)
+                features = [F2[i,k], np.zeros(L3), 0, 0]
+                G_E[u,v] = G_E[v,u] = concat(features)
+            for P in range(n):
+                #(i,j) - (j,P)
+                u = thc_vertex_index(j, P, 1)
+                features = [np.zeros(L2), np.zeros(L3), X[i,P], 0]
+                G_E[u,v] = G_E[v,u] = concat(features)
 
-                    if not u_single and not v_single:
-                        coulomb = 0 if np.abs(U[i,j,k,l]) < epsilon else U[i,j,k,l]
-                        features = [np.zeros(F_2), 0, coulomb, 0, 0]
-                    elif u_single and v_single:
-                        features = [Y[i,k], A[i,k], 0, 0, 0]
-                                                
-                    elif u_single and not v_single:
-                        if i == k:
-                            features = [np.zeros(F_2), 0, 0, 1, 0]
-                        elif i == l:
-                            features = [np.zeros(F_2), 0, 0, 0, 1]
-                        else:
-                            features = np.zeros(F_2 + 4)
-                    elif not u_single and v_single:
-                        if k == i:
-                            features = [np.zeros(F_2), 0, 0, 1, 0]
-                        elif k == j:
-                            features = [np.zeros(F_2), 0, 0, 0, 1]
-                        else:
-                            features = np.zeros(F_2 + 4)
-                    
-                    W[u,v] = concat(features)
-                    
-    
-    #TODO: Time optimization + Sparse optimization
-    
-    x = torch.from_numpy(Z)
-    all_edge = np.max(np.abs(W), axis = 2)
+    for P in range(n):
+        for Q in range(n):
+            v = thc_vertex_index(P, Q, 2)
+            for R in range(n):
+                #(P,Q) - (Q,R)
+                u = thc_vertex_index(Q, R, 2)
+                features = [np.zeros(L2), F3[P,R], 0, Z[P,R]]
+                G_E[u,v] = G_E[v,u] = concat(features)
+            for i in range(M):
+                #(P,Q) - (i,Q)
+                u = thc_vertex_index(i, Q, 1)
+                features = [np.zeros(L2), np.zeros(L3), X[i,P], 0]
+                G_E[u,v] = G_E[v,u] = concat(features)
+                
+    for P in range(n):
+        for i in range(M):
+            v = thc_vertex_index(i, P, 1)
+            for Q in range(n):
+                #(i,P) - (P,Q)
+                u = thc_vertex_index(i, Q, 1)
+                features = [np.zeros(L2), F3[P,Q], 0, Z[P,Q]]
+                G_E[u,v] = G_E[v,u] = concat(features)
+            for j in range(M):
+                #(i,P) - (j, P)
+                u = thc_vertex_index(j, P, 1)
+                features = [F2[i,j], np.zeros(L3), 0, 0]
+                G_E[u,v] = G_E[v,u] = concat(features)
+
+
+                
+                
+    x = torch.from_numpy(G_V)
+    all_edge = np.max(np.abs(G_E), axis = 2)
     all_edge = np.where(all_edge > 0, 1, 0)
     edge_index, _ = from_scipy_sparse_matrix(sparse.coo_matrix(all_edge))
     
-    edge_attr = W[(edge_index[0], edge_index[1])]
+    edge_attr = G_E[(edge_index[0], edge_index[1])]
     edge_attr = torch.from_numpy(edge_attr)
     
-    new_P = torch.from_numpy(new_P)
-    mask = torch.from_numpy(mask)
-    
-#     print(np.dot(new_P, mask) * 0.25)
-#     print(E)
-    
-    data = Data(x = x, edge_index = edge_index, edge_attr = edge_attr, y = new_P, E = E, mask = mask)
+    data = Data(x = x, edge_index = edge_index, edge_attr = edge_attr, MP2 = MP2, E = E, X = torch.from_numpy(X),
+                Z = torch.from_numpy(Z), X_mask = X_mask, Z_mask = Z_mask, T = torch.from_numpy(T))
     
     return data

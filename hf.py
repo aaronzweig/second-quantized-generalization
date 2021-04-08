@@ -5,13 +5,80 @@ import pickle
 import os.path
 from os import path
 
+#TODO: Becke quadrature + weights + CVT grid point sampling?
+#TODO: Stop cheating, switch to DF approximation
+
+def thc_cheat(mol, mo_coeff, eri_mo, r = 20, grid_points_per_atom = 600, epsilon_qr = 1e-15, epsilon_inv = 1e-15, verbose = False):
+    N = mol.nao_nr()
+    n = grid_points_per_atom * len(mol.atom)
+    r = min(N, r)
+    
+    ### grid evaluation ###
+    
+    coords = []
+    for atom in mol.atom:
+        pos = np.array(atom[1])
+        local_coords = pos + np.random.normal(scale = 3.0, size = (grid_points_per_atom, 3))
+        coords.append(local_coords)
+    coords = np.concatenate(coords, axis = 0)
+        
+    ao_value = mol.eval_gto("GTOval_sph", coords)
+    mo_value = ao_value.dot(mo_coeff)
+    
+    ### Fourier projection ###
+    
+    rho = np.zeros((N * N, n))
+    M = np.zeros((N * N, n), dtype=complex)
+    for mu in range(n):
+        v = np.outer(mo_value[mu], mo_value[mu]).flatten()
+        rho[:,mu] = v
+        M[:,mu] = np.fft.fft(v)
+
+    rows = np.random.choice(N * N, N * r, replace = False)
+    M = M[rows]
+    
+    ### QR pivot and threshold ###
+    
+    Q, R, E = scipy.linalg.qr(M, pivoting = True)
+    # print(np.linalg.norm(M[:,E] - Q.dot(R)))
+
+    E_inv = np.zeros(E.size, dtype=np.int32)
+    for i in np.arange(E_inv.size):
+        E_inv[E[i]] = i
+
+    d = np.abs(R.diagonal()) / np.abs(R[0,0])
+    N_aux = np.count_nonzero(d > epsilon_qr)
+
+    
+    ### Restrict to selected grid points and compute approximation by cheating
+    
+    coords_aux = coords[E[:N_aux]]
+    X = mo_value[E[:N_aux]].T
+
+    C = rho[:,E[:N_aux]]
+    # C = scipy.linalg.khatri_rao(X, X)
+    P = np.linalg.inv(R[:N_aux, :N_aux]).dot(R[:N_aux, E_inv])    
+    
+    B = np.linalg.pinv(C.T.dot(C), rcond = epsilon_inv).dot(C.T)
+    T = eri_mo.reshape(N*N, N*N)
+    Z = B @ T @ B.T
+    
+    T_approx = C @ Z @ C.T
+    
+    if verbose:
+        print("rho L2:", np.linalg.norm(rho - C.dot(P)))
+        print("T L_infinity:", np.max(np.abs(T - T_approx)))
+        print("C-X approx:", np.linalg.norm(C - scipy.linalg.khatri_rao(X, X)))
+    
+    return X, Z, coords_aux
+
 
 def get_orthoAO(S, LINDEP_CUTOFF=1e-14):
     sdiag, Us = np.linalg.eigh(S)
     X = Us[:,sdiag>LINDEP_CUTOFF] / np.sqrt(sdiag[sdiag>LINDEP_CUTOFF])
     return X
 
-def save_data(mols, filename, force = False):
+def save_data(mols, filename, force = False, kwargs = None):
     
     if path.exists(filename):
         if not force:
@@ -28,8 +95,8 @@ def save_data(mols, filename, force = False):
         na, nb = mol.nelec
         mf.kernel()
         
-        E = mf.energy_elec()
-        E = E[0] + E[1]
+        etotal = mf.energy_elec()
+        etotal = etotal[0] + etotal[1]
 
         # get AO integrals
         nbsf = mol.nao_nr() # the number of AOs
@@ -65,20 +132,21 @@ def save_data(mols, filename, force = False):
         eov = eo.reshape(-1,1) - ev.reshape(-1)
         de = 1/(eov.reshape(-1,1) + eov.reshape(-1)).reshape(g.shape)
         
-        pair = np.einsum('iajb,iajb,iajb->ij', g, g, de)
-                
-        #TODO: Need MO fock matrix?  And overlap
-        
+        E = np.einsum('iajb,iajb,iajb->ia', g, g, de)
         emp2 = .25 * np.einsum('iajb,iajb,iajb->', g, g, de)
         
-        dump = (hcore, eri_ao, rdm1_ao, fock_ao, hmo, eri_mo, rdm1_mo, mo_occ, mo_energy, pair, E, emp2)
+        
+        ###THC with cheating###
+        X, Z, coords_aux = thc_cheat(mol, mf.mo_coeff, eri_mo, **kwargs)
+        
+        dump = (hmo, eri_mo, rdm1_mo, mo_occ, mo_energy, X, Z, coords_aux, E, etotal, emp2)
         data.append(dump)
     
     with open(filename, 'wb') as f:
         pickle.dump(data, f)
     
 
-def load_data(filename, orbital_type = "AO"):
+def load_data(filename):
     
     with open(filename, 'rb') as f:
         data = pickle.load(f)
@@ -86,20 +154,26 @@ def load_data(filename, orbital_type = "AO"):
     new_data = []
     
     for dump in data:
-        hcore, eri_ao, rdm1_ao, fock_ao, hmo, eri_mo, rdm1_mo, mo_occ, mo_energy, pair, E, emp2 = dump
+        hmo, eri_mo, rdm1_mo, mo_occ, mo_energy, X, Z, coords_aux, E, etotal, emp2 = dump
         
-        if orbital_type == "AO":
-            new_dump = (hcore, eri_ao, None, np.stack([rdm1_ao, fock_ao], axis = 2), E)
-        else:
-            mo_occ[mo_occ>0] = 1
-            double_occupied = np.outer(mo_occ, mo_occ)
-            new_dump = (hmo, eri_mo, np.stack([mo_occ, mo_energy], axis = 1), np.stack([rdm1_mo, fock_ao, double_occupied], axis = 2), pair, emp2, mo_occ)
+        M = hmo.shape[0]
+        N_aux = coords_aux.shape[0]
+        
+        F1 = np.stack([mo_energy, mo_occ], axis = 1)
+        F2 = np.stack([hmo, rdm1_mo, np.eye(M)], axis = 2)
+        F3 = np.zeros((N_aux, N_aux, 2))
+        for i in range(N_aux):
+            for j in range(N_aux):
+                F3[i,j,0] = np.linalg.norm(coords_aux[i] - coords_aux[j])
+        F3[:,:,1] = np.eye(N_aux)
+        
+        new_dump = (X, Z, F1, F2, F3, eri_mo, E, emp2)
         new_data.append(new_dump)
     return new_data
 
 
 
-
+#########################################################################################################
 
 
 def get_data(mol, orbital_type = "AO", predict_correlation_pairs = True):
