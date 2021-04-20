@@ -55,7 +55,8 @@ def concat(arr):
 
 
 
-
+def from_numpy_tuple(tup):
+    return tuple([torch.from_numpy(x) for x in tup])
 
 
 #M: total number of orbitals
@@ -64,6 +65,7 @@ def concat(arr):
 
 #X is THC matrix: M x n
 #Z is THC matrix: n x n
+#U is AO -> MO matrix: M x M
 
 #F1 is additional orbital feature matrix: M x L1
 #F2 is additional pairwise orbital feature matrix: M x M x L2
@@ -81,13 +83,19 @@ def concat(arr):
 #NOTE: Assume the first N orbitals are the occupied ones
 #TODO: Sparisfy the edge building
 #TODO: Make sure same-index features (i.e. identity) are included in F2 and F3
-#NOTE: Careful about getting X and Z masks, and reshaping them out of the indices at the end
 
-def build_thc_graph(X, Z, F1, F2, F3, T, E, MP2):
+def build_thc_graph(con):
     
-    M = X.shape[0]
-    N = E.shape[0]
-    n = Z.shape[0]
+    X_mo, Z = con.X_mo, con.Z    
+    F1, F2, F3 = con.get_features()
+    
+    ###
+    Z = np.zeros_like(Z)
+    ###
+    
+    M = con.M
+    N = con.N
+    n = con.N_aux
     
     L1 = F1.shape[1]
     L2 = F2.shape[2]
@@ -136,6 +144,7 @@ def build_thc_graph(X, Z, F1, F2, F3, T, E, MP2):
     
     X_mask = np.zeros(V, dtype=bool)
     Z_mask = np.zeros(V, dtype=bool)
+    E_mask = np.zeros(V, dtype=bool)
     
     ### build vertices ###
     
@@ -145,12 +154,15 @@ def build_thc_graph(X, Z, F1, F2, F3, T, E, MP2):
             v = thc_vertex_index(i, j, 0)
             features = [F1[i], F1[j], F2[i,j], np.zeros(L3), typ_arr, 0, 0]
             G_V[v] = concat(features)
+            
+            if con.mo_occ[i]>0 and con.mo_occ[j]==0:
+                E_mask[v] = 1
     
     typ_arr = np.array([0, 1, 0])
     for i in range(M):
         for P in range(n):
             v = thc_vertex_index(i, P, 1)
-            features = [F1[i], np.zeros(L1), np.zeros(L2), np.zeros(L3), typ_arr, X[i,P], 0]
+            features = [F1[i], np.zeros(L1), np.zeros(L2), np.zeros(L3), typ_arr, X_mo[i,P], 0]
             G_V[v] = concat(features)
             X_mask[v] = True
     
@@ -178,7 +190,7 @@ def build_thc_graph(X, Z, F1, F2, F3, T, E, MP2):
             for P in range(n):
                 #(i,j) - (j,P)
                 u = thc_vertex_index(j, P, 1)
-                features = [np.zeros(L2), np.zeros(L3), X[i,P], 0]
+                features = [np.zeros(L2), np.zeros(L3), X_mo[i,P], 0]
                 G_E[u,v] = G_E[v,u] = concat(features)
 
     for P in range(n):
@@ -192,7 +204,7 @@ def build_thc_graph(X, Z, F1, F2, F3, T, E, MP2):
             for i in range(M):
                 #(P,Q) - (i,Q)
                 u = thc_vertex_index(i, Q, 1)
-                features = [np.zeros(L2), np.zeros(L3), X[i,P], 0]
+                features = [np.zeros(L2), np.zeros(L3), X_mo[i,P], 0]
                 G_E[u,v] = G_E[v,u] = concat(features)
                 
     for P in range(n):
@@ -210,7 +222,7 @@ def build_thc_graph(X, Z, F1, F2, F3, T, E, MP2):
                 G_E[u,v] = G_E[v,u] = concat(features)
 
 
-                
+    #TODO: EFFICIENT SPARSE GRAPH FORMATION
                 
     x = torch.from_numpy(G_V)
     all_edge = np.max(np.abs(G_E), axis = 2)
@@ -220,7 +232,7 @@ def build_thc_graph(X, Z, F1, F2, F3, T, E, MP2):
     edge_attr = G_E[(edge_index[0], edge_index[1])]
     edge_attr = torch.from_numpy(edge_attr)
     
-    data = Data(x = x, edge_index = edge_index, edge_attr = edge_attr, MP2 = MP2, E = E, X = torch.from_numpy(X),
-                Z = torch.from_numpy(Z), X_mask = X_mask, Z_mask = Z_mask, T = torch.from_numpy(T))
+    data = Data(x = x, edge_index = edge_index, edge_attr = edge_attr, con = con,
+               E_mask = E_mask)
     
     return data
