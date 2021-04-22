@@ -50,6 +50,11 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
 
             batch_losses.append(loss.item())
 
+            if i  == iterations-1:
+                print("final comp")
+                print("THC loss: {:e}".format(torch.norm(E_true - E_THC)))
+                print("our loss: {:e}".format(torch.norm(E_true - E_pred)))
+
         batch_loss = np.mean(np.array(batch_losses))
         losses.append(batch_loss)
         if verbose:
@@ -75,9 +80,9 @@ def get_args():
 
     
     parser.add_argument('--no-cuda', action='store_true', default=False)
+    args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     
-    args = parser.parse_args()
     return args
 
 
@@ -90,7 +95,7 @@ if __name__ == "__main__":
     mols = mols[:args.dataset_size]
     kwargs = {'grid_points_per_atom': args.grid_points_per_atom,
               'epsilon_qr': args.epsilon_qr,
-              'epsilon_inv': args.epsilon-inv,
+              'epsilon_inv': args.epsilon_inv,
               'verbose': args.verbose}
     mol_data = [THCContainer(mol, kwargs) for mol in mols]
 

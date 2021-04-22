@@ -86,7 +86,7 @@ def from_numpy_tuple(tup):
 
 def build_thc_graph(con):
     
-    X_mo = con.X_mo, con.Z    
+    X_mo = con.X_mo
     F1, F2, F3 = con.get_features()
     
     M = con.M
@@ -230,6 +230,6 @@ def build_thc_graph(con):
     edge_attr = torch.from_numpy(edge_attr)
     
     data = Data(x = x, edge_index = edge_index, edge_attr = edge_attr, con = con,
-               E_mask = E_mask)
+               E_mask = torch.from_numpy(E_mask))
     
     return data
