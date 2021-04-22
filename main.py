@@ -34,8 +34,10 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
             E_THC = data.con.E_THC[0] # first term means the J term
             E_THC = torch.from_numpy(E_THC).to(device)
             
+            #Scaling correction
             E_hat = model(data.to(device))[data.E_mask.to(device)][:,0].reshape(E_THC.shape)
-            E_pred = E_THC + lamb * E_hat
+            E_hat = torch.atan(E_hat) * (2.0 / np.pi) * lamb
+            E_pred = E_THC * E_hat
 
             E_true = data.con.E[0] # first term means the J term
             E_true = torch.from_numpy(E_true).to(device)
