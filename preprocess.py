@@ -112,20 +112,20 @@ def build_thc_graph(con):
         return int(index)
         
 ### TEST
-    for i in range(M):
-        for j in range(i,M):
-            v = thc_vertex_index(i,j,0)
-            print(v)
+#     for i in range(M):
+#         for j in range(i,M):
+#             v = thc_vertex_index(i,j,0)
+#             print(v)
 
-    for i in range(M):
-        for P in range(n):
-            v = thc_vertex_index(i,P,1)
-            print(v)
+#     for i in range(M):
+#         for P in range(n):
+#             v = thc_vertex_index(i,P,1)
+#             print(v)
 
-    for P in range(n):
-        for Q in range(P,n):
-            v = thc_vertex_index(Q, P, 2)
-            print(v)
+#     for P in range(n):
+#         for Q in range(P,n):
+#             v = thc_vertex_index(Q, P, 2)
+#             print(v)
     
     V_F = L1 + L1 + L2 + L3 + 3 + 1 + 1
     # F1_i, F1_j, F2, F3, type, X, Z
