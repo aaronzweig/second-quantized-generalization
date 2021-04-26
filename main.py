@@ -19,6 +19,8 @@ from torch_geometric.utils import softmax
 from torch_geometric.utils.convert import from_scipy_sparse_matrix
 from torch_geometric.data import Data, DataLoader
 
+import os
+import pickle
 
 from pyscf import gto, scf, tools, ao2mo
 
@@ -34,7 +36,13 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
     losses = []
     for i in range(iterations):
         batch_losses = []
-        for data in loader:
+        for d in loader:
+
+            if isinstance(d, str):
+                with open(d, 'rb') as f:
+                    data = pickle.load(f)
+            else:
+                data = d
 
             E_THC = data.con.E_THC[0] # first term means the J term
             E_THC = torch.from_numpy(E_THC).to(device)
@@ -87,8 +95,10 @@ def get_args():
     parser.add_argument('--verbose', action='store_true', default=False)
     parser.add_argument('--basis', default='sto-3g')
     parser.add_argument('--dataset_size', type=int, default=5)
-    parser.add_argument('--heads', type=int, default=2)
 
+    parser.add_argument('--folder_name', default="")
+
+    parser.add_argument('--heads', type=int, default=2)
     parser.add_argument('--hidden_dim', type=int, default=20)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--lamb', type=float, default=1e-2)
@@ -107,28 +117,34 @@ if __name__ == "__main__":
     args = get_args()
     device = torch.device("cuda:0" if args.cuda else "cpu")
 
-    mols = build_qm7(args.basis)
-    mols = mols[:args.dataset_size]
-    kwargs = {'grid_points_per_atom': args.grid_points_per_atom,
-              'epsilon_qr': args.epsilon_qr,
-              'epsilon_inv': args.epsilon_inv,
-              'verbose': args.verbose}
-    mol_data = [THCContainer(mol, kwargs) for mol in mols]
+    if args.folder_name == "":
 
-    dataset = []
-    for con in mol_data:
+        mols = build_qm7(args.basis)
+        mols = mols[:args.dataset_size]
+        kwargs = {'grid_points_per_atom': args.grid_points_per_atom,
+                  'epsilon_qr': args.epsilon_qr,
+                  'epsilon_inv': args.epsilon_inv,
+                  'verbose': args.verbose}
+        mol_data = [THCContainer(mol, kwargs) for mol in mols]
 
-        if args.verbose:
-            print("E_J loss", np.linalg.norm(con.E[0] - con.E_THC[0]))
-            print("E loss", np.linalg.norm(con.E[2] - con.E_THC[2]))
-            print("MP2_J loss", np.linalg.norm(con.MP2[0] - con.MP2_THC[0]))
-            print("MP2 loss", np.linalg.norm(con.MP2[2] - con.MP2_THC[2]))
-            print(con.E[2].shape)
-            print("")
+        dataset = []
+        for con in mol_data:
+
+            if args.verbose:
+                print("E_J loss", np.linalg.norm(con.E[0] - con.E_THC[0]))
+                print("E loss", np.linalg.norm(con.E[2] - con.E_THC[2]))
+                print("MP2_J loss", np.linalg.norm(con.MP2[0] - con.MP2_THC[0]))
+                print("MP2 loss", np.linalg.norm(con.MP2[2] - con.MP2_THC[2]))
+                print(con.E[2].shape)
+                print("")
             
-        data = build_thc_graph(con)
+            data = build_thc_graph(con)
+            dataset.append(data)
 
-        dataset.append(data)
+    else:
+        prefix = "./data/" + args.folder_name
+        dataset = [prefix + "/" + filename for filename in os.listdir(prefix)]
+        
 
     vertex_dim = dataset[0].x.shape[1]
     edge_dim = dataset[0].edge_attr.shape[1]
