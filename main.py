@@ -1,3 +1,8 @@
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 import argparse
 import numpy as np
 import torch
@@ -36,13 +41,17 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
             
             #Scaling correction
             E_hat = model(data.to(device))[data.E_mask.to(device)][:,0].reshape(E_THC.shape)
-            E_hat = torch.atan(E_hat) * (2.0 / np.pi) * lamb
-            E_pred = E_THC * E_hat
+            #E_hat = torch.atan(E_hat) * (2.0 / np.pi) * lamb
+            #E_pred = E_THC * E_hat
 
             E_true = data.con.E[0] # first term means the J term
             E_true = torch.from_numpy(E_true).to(device)
 
-            loss = torch.norm(E_true - E_pred) / torch.norm(E_true) #Scale regularization
+            #loss = torch.norm(E_true - E_pred) / torch.norm(E_true) #Scale regularization
+            zero = torch.tensor([0]).to(device)
+            one = torch.tensor([1]).to(device)
+            target = torch.where(E_true > E_THC, one, zero).double()
+            loss = torch.nn.BCELoss()(torch.sigmoid(E_hat), target)
 
             optimizer.zero_grad()
             loss.backward()
@@ -54,8 +63,8 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
 
             if i  == iterations-1:
                 print("final comp")
-                print("THC loss: {:e}".format(torch.norm(E_true - E_THC)))
-                print("our loss: {:e}".format(torch.norm(E_true - E_pred)))
+                #print("THC loss: {:e}".format(torch.norm(E_true - E_THC)))
+                #print("our loss: {:e}".format(torch.norm(E_true - E_pred)))
 
         batch_loss = np.mean(np.array(batch_losses))
         losses.append(batch_loss)

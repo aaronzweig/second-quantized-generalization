@@ -154,6 +154,7 @@ class THCContainer():
         self.mol = mol
         self.hmo = hmo
         self.rdm1_mo = rdm1_mo
+        self.S = S
         self.mo_energy = mo_energy
         self.mo_occ = mo_occ
         self.mo_coeff = mo_coeff
@@ -164,7 +165,7 @@ class THCContainer():
     def get_features(self):
 
         F1 = np.stack([self.mo_energy, self.mo_occ], axis = 1)
-        F2 = np.stack([self.hmo, self.rdm1_mo, np.eye(self.M)], axis = 2)
+        F2 = np.stack([self.hmo, self.rdm1_mo, self.S, np.eye(self.M)], axis = 2)
         F3 = np.zeros((self.N_aux, self.N_aux, 2))
         for i in range(self.N_aux):
             for j in range(self.N_aux):
