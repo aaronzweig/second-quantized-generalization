@@ -48,7 +48,9 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
             E_true = torch.from_numpy(E_true).to(device)
 
             loss = torch.norm(E_true - E_pred) / torch.norm(E_true) #Scale regularization
-            
+            scalar_loss = torch.abs(torch.sum(E_true) - torch.sum(E_pred))
+            dummy_loss = torch.abs(torch.sum(E_true) - torch.sum(E_THC))
+
 #             zero = torch.tensor([0]).to(device)
 #             one = torch.tensor([1]).to(device)
 #             target = torch.where(E_true > E_THC, one, zero).double()
@@ -60,18 +62,18 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
 
             optimizer.step()
 
-            batch_losses.append(loss.item())
+            batch_losses.append((loss.item(), scalar_loss.item(), dummy_loss.item()))
 
             if i  == iterations-1:
                 print("final comp")
                 #print("THC loss: {:e}".format(torch.norm(E_true - E_THC)))
                 #print("our loss: {:e}".format(torch.norm(E_true - E_pred)))
 
-        batch_loss = np.mean(np.array(batch_losses))
+        batch_loss = np.mean(np.array([l[0] for l in batch_losses]))
         losses.append(batch_loss)
         if verbose:
-            for loss in batch_losses:
-            print("timestep: {}, loss: {:e}".format(i, loss))
+            for loss, scalar_loss, dummy_loss in batch_losses:
+                print("timestep: {}, loss: {:e}, scalar_loss: {:e}, dummy_loss: {:e}".format(i, loss, scalar_loss, dummy_loss))
 
     model.eval()
     return losses

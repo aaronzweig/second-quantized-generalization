@@ -162,7 +162,7 @@ class THCContainer():
         self.M = mol.nao_nr()
         self.N_aux = self.coords.shape[0]
         
-    def get_features(self):
+    def get_features(self, tau = 1.0):
 
         F1 = np.stack([self.mo_energy, self.mo_occ], axis = 1)
         
@@ -174,7 +174,7 @@ class THCContainer():
         F3 = np.zeros((self.N_aux, self.N_aux, 2))
         for i in range(self.N_aux):
             for j in range(self.N_aux):
-                F3[i,j,0] = np.linalg.norm(self.coords[i] - self.coords[j])
+                F3[i,j,0] = np.exp(-1.0 * tau * np.linalg.norm(self.coords[i] - self.coords[j]))
         F3[:,:,1] = np.eye(self.N_aux)
 
         return F1, F2, F3
