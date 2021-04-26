@@ -151,7 +151,7 @@ class THCContainer():
         self.MP2_THC, self.E_THC = get_mp2(eri_THC, mo_energy, mo_occ)
         
         # save features
-        self.mol = mol
+#         self.mol = mol
         self.hmo = hmo
         self.rdm1_mo = rdm1_mo
         self.S = S
