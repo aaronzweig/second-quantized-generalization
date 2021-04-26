@@ -12,12 +12,12 @@ def get_mp2(eri, mo_energy, mo_occ):
     de = 1/(eov.reshape(-1,1) + eov.reshape(-1)).reshape(eri.shape)
     
     E_J = 2 * np.einsum('iajb,iajb,iajb->ia', eri, eri, de)
-    E_K = np.einsum('iajb,ibja,iajb->ia', eri, eri, de)
-    E = E_J - E_K
+    E_K = -1 * np.einsum('iajb,ibja,iajb->ia', eri, eri, de)
+    E = E_J + E_K
     
     MP2_J = 2 * np.einsum('iajb,iajb,iajb->', eri, eri, de)
-    MP2_K = np.einsum('iajb,ibja,iajb->', eri, eri, de)
-    MP2 = MP2_J - MP2_K
+    MP2_K = -1 * np.einsum('iajb,ibja,iajb->', eri, eri, de)
+    MP2 = MP2_J + MP2_K
     
     return (MP2_J, MP2_K, MP2), (E_J, E_K, E)
 
@@ -144,8 +144,8 @@ class THCContainer():
         
         self.X, self.X_mo, self.Z, self.coords, T_THC = build_thc(mol, mo_coeff, eri_ao, eri_mo, **kwargs)
         
-        N = mol.nao_nr()
-        eri_THC = T_THC.reshape((N, N, N, N))
+        M = mol.nao_nr()
+        eri_THC = T_THC.reshape((M, M, M, M))
         eri_THC = eri_THC[mo_occ>0][:,mo_occ==0][:,:,mo_occ>0][:,:,:,mo_occ==0]
         
         self.MP2_THC, self.E_THC = get_mp2(eri_THC, mo_energy, mo_occ)
@@ -158,14 +158,19 @@ class THCContainer():
         self.mo_energy = mo_energy
         self.mo_occ = mo_occ
         self.mo_coeff = mo_coeff
-        self.N = mol.nao_nr()
-        self.M = hmo.shape[0]
+        self.N = np.count_nonzero(mo_occ)
+        self.M = mol.nao_nr()
         self.N_aux = self.coords.shape[0]
         
     def get_features(self):
 
         F1 = np.stack([self.mo_energy, self.mo_occ], axis = 1)
-        F2 = np.stack([self.hmo, self.rdm1_mo, self.S, np.eye(self.M)], axis = 2)
+        
+        E_THC_J_full = np.zeros((self.M, self.M))
+        E_THC_J_full[:self.N, self.N:] = self.E_THC[0]
+        E_THC_J_full[self.N:, :self.N] = self.E_THC[0].T
+        F2 = np.stack([self.hmo, self.rdm1_mo, E_THC_J_full, np.eye(self.M)], axis = 2)
+        
         F3 = np.zeros((self.N_aux, self.N_aux, 2))
         for i in range(self.N_aux):
             for j in range(self.N_aux):

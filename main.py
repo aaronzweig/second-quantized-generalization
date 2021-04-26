@@ -39,19 +39,20 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
             E_THC = data.con.E_THC[0] # first term means the J term
             E_THC = torch.from_numpy(E_THC).to(device)
             
-            #Scaling correction
-            E_hat = model(data.to(device))[data.E_mask.to(device)][:,0].reshape(E_THC.shape)
+            E_hat = model(data.to(device))[data.E_mask.to(device)].reshape(E_THC.shape)
+            E_pred = E_hat + E_THC
             #E_hat = torch.atan(E_hat) * (2.0 / np.pi) * lamb
             #E_pred = E_THC * E_hat
 
-            E_true = data.con.E[0] # first term means the J term
+            E_true = data.con.E[2] # 2 means the total MP2
             E_true = torch.from_numpy(E_true).to(device)
 
-            #loss = torch.norm(E_true - E_pred) / torch.norm(E_true) #Scale regularization
-            zero = torch.tensor([0]).to(device)
-            one = torch.tensor([1]).to(device)
-            target = torch.where(E_true > E_THC, one, zero).double()
-            loss = torch.nn.BCELoss()(torch.sigmoid(E_hat), target)
+            loss = torch.norm(E_true - E_pred) / torch.norm(E_true) #Scale regularization
+            
+#             zero = torch.tensor([0]).to(device)
+#             one = torch.tensor([1]).to(device)
+#             target = torch.where(E_true > E_THC, one, zero).double()
+#             loss = torch.nn.BCELoss()(torch.sigmoid(E_hat), target)
 
             optimizer.zero_grad()
             loss.backward()
@@ -69,7 +70,8 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
         batch_loss = np.mean(np.array(batch_losses))
         losses.append(batch_loss)
         if verbose:
-            print("timestep: {}, loss: {:e}".format(i, batch_loss))
+            for loss in batch_losses:
+            print("timestep: {}, loss: {:e}".format(i, loss))
 
     model.eval()
     return losses
@@ -83,6 +85,7 @@ def get_args():
     parser.add_argument('--verbose', action='store_true', default=False)
     parser.add_argument('--basis', default='sto-3g')
     parser.add_argument('--dataset_size', type=int, default=5)
+    parser.add_argument('--heads', type=int, default=2)
 
     parser.add_argument('--hidden_dim', type=int, default=20)
     parser.add_argument('--lr', type=float, default=0.001)
@@ -127,7 +130,7 @@ if __name__ == "__main__":
 
     vertex_dim = dataset[0].x.shape[1]
     edge_dim = dataset[0].edge_attr.shape[1]
-    model = THCNet(vertex_dim, edge_dim, args.hidden_dim).double()
+    model = THCNet(vertex_dim, edge_dim, args.hidden_dim, args.heads).double()
     
     model.to(device)
 

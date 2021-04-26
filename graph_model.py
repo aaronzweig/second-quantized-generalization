@@ -2,6 +2,7 @@ import numpy as np
 
 import torch_geometric.transforms as T
 from torch_geometric.nn import GCNConv, GATConv, GraphConv, GlobalAttention, NNConv, global_add_pool, global_mean_pool
+from torch_geometric.nn import TransformerConv
 from torch_geometric.data import Data
 from torch_geometric.utils import softmax
 
@@ -102,35 +103,24 @@ class SimpleNet(nn.Module):
         return 0.25 * x
 
 class THCNet(nn.Module):
-    def __init__(self, vertex_dim, edge_dim, hidden_dim, skip = False, dummy = False):        
+    def __init__(self, vertex_dim, edge_dim, hidden_dim, heads = 1):        
         super(THCNet, self).__init__()
         
-        hidden_dim_plus = 2 * hidden_dim if skip else hidden_dim
-        
-        self.conv1 = CGConv(vertex_dim, hidden_dim, edge_dim)
-        self.l1 = nn.Linear(hidden_dim_plus, hidden_dim)
-        self.conv2 = CGConv(hidden_dim, hidden_dim, edge_dim)
-        self.l2 = nn.Linear(hidden_dim_plus, 2)
-
-        self.skip = skip
-        self.dummy = dummy
-        
-    def skip_connect(self, x, original):
-        if self.skip:
-            return torch.cat([x, original], dim = 1)
-        else:
-            return x
-                        
+        self.conv1 = TransformerConv(vertex_dim, hidden_dim, heads = heads, edge_dim = edge_dim)
+        self.l1 = nn.Linear(hidden_dim * heads, hidden_dim)
+        self.conv2 = TransformerConv(hidden_dim, hidden_dim, heads = heads, edge_dim = edge_dim)
+        self.l2 = nn.Linear(hidden_dim * heads, 1)
+                
+#         self.conv1 = CGConv(vertex_dim, hidden_dim, edge_dim)
+#         self.l1 = nn.Linear(hidden_dim, hidden_dim)
+#         self.conv2 = CGConv(hidden_dim, hidden_dim, edge_dim)
+#         self.l2 = nn.Linear(hidden_dim, 1)
+ 
     def forward(self, data):
 
         x = F.relu(self.conv1(data.x, data.edge_index, data.edge_attr))
-        x = self.skip_connect(x, data.x)
         x = F.relu(self.l1(x))
         x = F.relu(self.conv2(x, data.edge_index, data.edge_attr))
-        x = self.skip_connect(x, data.x)
         x = self.l2(x)
         
-        if self.dummy:
-            x = data.x[:,-2:]
-        
-        return x
+        return x.squeeze(-1)
