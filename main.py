@@ -48,16 +48,16 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
             E_THC = torch.from_numpy(E_THC).to(device)
             
             E_hat = model(data.to(device))[data.E_mask.to(device)].reshape(E_THC.shape)
-            E_pred = E_hat + E_THC
-            #E_hat = torch.atan(E_hat) * (2.0 / np.pi) * lamb
-            #E_pred = E_THC * E_hat
+            E_pred = torch.exp(E_hat) + E_THC
 
-            E_true = data.con.E[2] # 2 means the total MP2
-            E_true = torch.from_numpy(E_true).to(device)
-
-            loss = torch.norm(E_true - E_pred) / torch.norm(E_true) #Scale regularization
-            scalar_loss = torch.abs(torch.sum(E_true) - torch.sum(E_pred))
-            dummy_loss = torch.abs(torch.sum(E_true) - torch.sum(E_THC))
+            E_true_K, E_true_total = data.con.E[1], data.con.E[2] # 2 means the total MP2
+            E_true_K = torch.from_numpy(E_true_K).to(device)
+            E_true_total = torch.from_numpy(E_true_total).to(device)
+            
+            loss = nn.MSELoss()(E_hat, torch.log(E_true_K))
+            #loss = torch.norm(E_true - E_pred) / torch.norm(E_true) #Scale regularization
+            scalar_loss = torch.abs(torch.sum(E_true_total) - torch.sum(E_pred))
+            dummy_loss = torch.abs(torch.sum(E_true_total) - torch.sum(E_THC))
 
 #             zero = torch.tensor([0]).to(device)
 #             one = torch.tensor([1]).to(device)
@@ -103,7 +103,7 @@ def get_args():
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--lamb', type=float, default=1e-2)
     parser.add_argument('--iterations', type=int, default=200)
-
+    parser.add_argument('--z_max', type=float, default=1.0)
     
     parser.add_argument('--no-cuda', action='store_true', default=False)
     args = parser.parse_args()
@@ -124,7 +124,9 @@ if __name__ == "__main__":
         kwargs = {'grid_points_per_atom': args.grid_points_per_atom,
                   'epsilon_qr': args.epsilon_qr,
                   'epsilon_inv': args.epsilon_inv,
-                  'verbose': args.verbose}
+                  'verbose': args.verbose,
+                  'z_max': args.z_max
+        }
         mol_data = [THCContainer(mol, kwargs) for mol in mols]
 
         dataset = []

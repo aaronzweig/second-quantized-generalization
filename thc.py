@@ -25,7 +25,7 @@ def get_mp2(eri, mo_energy, mo_occ):
 #TODO: Stop cheating, switch to DF approximation
 
 def build_thc(mol, mo_coeff, eri_ao, eri_mo, r = 20, grid_points_per_atom = 600, 
-                  epsilon_qr = 1e-15, epsilon_inv = 1e-15, verbose = False, scale = 3.0):
+                  epsilon_qr = 1e-15, epsilon_inv = 1e-15, verbose = False, scale = 3.0, z_max = -1.0):
         N = mol.nao_nr()
         n = grid_points_per_atom * len(mol.atom)
         r = min(N, r)
@@ -95,6 +95,12 @@ def build_thc(mol, mo_coeff, eri_ao, eri_mo, r = 20, grid_points_per_atom = 600,
             print("T_ao L_infinity:", np.max(np.abs(T_ao - C @ Z @ C.T)))
             print("T_mo L_infinity:", np.max(np.abs(T_mo - T_approx)))
             print("T_mo L_2:", np.linalg.norm(T_mo - T_approx))
+
+        if z_max > 0:
+            c = np.max(np.abs(Z)) / z_max
+            Z /= c
+            X *= c ** 0.25
+            X_mo *= c ** 0.25
 
         return X, X_mo, Z, coords_aux, T_approx
 

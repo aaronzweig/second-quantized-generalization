@@ -87,6 +87,7 @@ def from_numpy_tuple(tup):
 def build_thc_graph(con):
     
     X_mo = con.X_mo
+    Z = con.Z
     F1, F2, F3 = con.get_features()
     
     M = con.M
@@ -129,8 +130,8 @@ def build_thc_graph(con):
     
     V_F = L1 + L1 + L2 + L3 + 3 + 1 + 1
     # F1_i, F1_j, F2, F3, type, X, Z
-    E_F = L2 + L3 + 1 + 1
-    # F2, F3, X, Z
+    E_F = L2 + L3 + 1 + 1 + 1
+    # F2, F3, X, Z, X*X
     
     
     V = int(M*(M+1)/2 + M * n + n*(n+1)/2)
@@ -166,7 +167,7 @@ def build_thc_graph(con):
     for P in range(n):
         for Q in range(P,n):
             v = thc_vertex_index(P, Q, 2)
-            features = [np.zeros(L1), np.zeros(L1), np.zeros(L2), F3[P,Q], typ_arr, 0, 0]
+            features = [np.zeros(L1), np.zeros(L1), np.zeros(L2), F3[P,Q], typ_arr, 0, Z[P,Q]]
             G_V[v] = concat(features)
             Z_mask[v] = True
 
@@ -181,12 +182,12 @@ def build_thc_graph(con):
             for k in range(M):
                 #(i,j) - (j,k)
                 u = thc_vertex_index(j, k, 0)
-                features = [F2[i,k], np.zeros(L3), 0, 0]
+                features = [F2[i,k], np.zeros(L3), 0, 0, 0]
                 G_E[u,v] = G_E[v,u] = concat(features)
             for P in range(n):
                 #(i,j) - (j,P)
                 u = thc_vertex_index(j, P, 1)
-                features = [np.zeros(L2), np.zeros(L3), X_mo[i,P], 0]
+                features = [np.zeros(L2), np.zeros(L3), X_mo[i,P], 0, X_mo[i,P] * X_mo[j,P]]
                 G_E[u,v] = G_E[v,u] = concat(features)
 
     for P in range(n):
@@ -195,12 +196,12 @@ def build_thc_graph(con):
             for R in range(n):
                 #(P,Q) - (Q,R)
                 u = thc_vertex_index(Q, R, 2)
-                features = [np.zeros(L2), F3[P,R], 0, 0]
+                features = [np.zeros(L2), F3[P,R], 0, Z[P,R], 0]
                 G_E[u,v] = G_E[v,u] = concat(features)
             for i in range(M):
                 #(P,Q) - (i,Q)
                 u = thc_vertex_index(i, Q, 1)
-                features = [np.zeros(L2), np.zeros(L3), X_mo[i,P], 0]
+                features = [np.zeros(L2), np.zeros(L3), X_mo[i,P], 0, X_mo[i,P] * X_mo[j,P]]
                 G_E[u,v] = G_E[v,u] = concat(features)
                 
                 
@@ -210,12 +211,12 @@ def build_thc_graph(con):
             for Q in range(n):
                 #(i,P) - (i,Q)
                 u = thc_vertex_index(i, Q, 1)
-                features = [np.zeros(L2), F3[P,Q], 0, X_mo[i,P]*X_mo[i,Q]]
+                features = [np.zeros(L2), F3[P,Q], 0, Z[P,Q], X_mo[i,P] * X_mo[i,Q]]
                 G_E[u,v] = G_E[v,u] = concat(features)
             for j in range(M):
                 #(i,P) - (j, P)
                 u = thc_vertex_index(j, P, 1)
-                features = [F2[i,j], np.zeros(L3), 0, 0]
+                features = [F2[i,j], np.zeros(L3), 0, 0, X_mo[i,P] * X_mo[j,P]]
                 G_E[u,v] = G_E[v,u] = concat(features)
 
 
