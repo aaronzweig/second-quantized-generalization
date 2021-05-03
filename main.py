@@ -55,7 +55,7 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
             E_true_total = torch.from_numpy(E_true_total).to(device)
             
             loss = nn.MSELoss()(E_hat, torch.log(E_true_K))
-            #loss = torch.norm(E_true - E_pred) / torch.norm(E_true) #Scale regularization
+            #loss = torch.norm(E_true_total - E_pred) / torch.norm(E_true_total) #Scale regularization
             scalar_loss = torch.abs(torch.sum(E_true_total) - torch.sum(E_pred))
             dummy_loss = torch.abs(torch.sum(E_true_total) - torch.sum(E_THC))
 
