@@ -175,6 +175,13 @@ class THCContainer():
         E_THC_J_full = np.zeros((self.M, self.M))
         E_THC_J_full[:self.N, self.N:] = self.E_THC[0]
         E_THC_J_full[self.N:, :self.N] = self.E_THC[0].T
+        
+#         ### SANITY CHECK THAt DEFEATS THE POINT
+#         E_K_full = np.zeros((self.M, self.M))
+#         E_K_full[:self.N, self.N:] = self.E[1]
+#         E_K_full[self.N:, :self.N] = self.E[1].T
+#         ###
+        
         F2 = np.stack([self.hmo, self.rdm1_mo, E_THC_J_full, np.eye(self.M)], axis = 2)
         
         F3 = np.zeros((self.N_aux, self.N_aux, 2))

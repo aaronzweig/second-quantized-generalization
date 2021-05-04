@@ -25,7 +25,7 @@ import pickle
 from pyscf import gto, scf, tools, ao2mo
 
 from graph_model import SecondNet, SimpleNet, THCNet
-from preprocess import build_qm7, build_thc_graph
+from preprocess import build_qm7, build_toy, build_thc_graph
 from thc import THCContainer
 from utils import khatri_rao
 
@@ -48,14 +48,18 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
             E_THC = torch.from_numpy(E_THC).to(device)
             
             E_hat = model(data.to(device))[data.E_mask.to(device)].reshape(E_THC.shape)
-            E_pred = torch.exp(E_hat) + E_THC
+#             E_pred = torch.exp(E_hat) + E_THC
+            E_pred = E_hat + E_THC
+
 
             E_true_K, E_true_total = data.con.E[1], data.con.E[2] # 2 means the total MP2
             E_true_K = torch.from_numpy(E_true_K).to(device)
             E_true_total = torch.from_numpy(E_true_total).to(device)
-            
-            loss = nn.MSELoss()(E_hat, torch.log(E_true_K))
-            #loss = torch.norm(E_true_total - E_pred) / torch.norm(E_true_total) #Scale regularization
+                        
+#             loss = nn.MSELoss()(E_hat, torch.log(E_true_K))
+            loss = torch.nn.SmoothL1Loss()(E_pred, E_true_total) / torch.norm(E_true_total, p = 1) #Scale regularization
+#             loss = torch.norm(E_true_total - E_pred, p = 2) / torch.norm(E_true_total, p = 2) #Scale regularization
+#             loss = torch.norm(E_true_total - E_pred, p = 1) / torch.norm(E_true_total, p = 1) #Scale regularization
             scalar_loss = torch.abs(torch.sum(E_true_total) - torch.sum(E_pred))
             dummy_loss = torch.abs(torch.sum(E_true_total) - torch.sum(E_THC))
 
@@ -119,7 +123,8 @@ if __name__ == "__main__":
 
     if args.folder_name == "":
 
-        mols = build_qm7(args.basis)
+#         mols = build_qm7(args.basis)
+        mols = build_toy(args.basis)
         mols = mols[:args.dataset_size]
         kwargs = {'grid_points_per_atom': args.grid_points_per_atom,
                   'epsilon_qr': args.epsilon_qr,
@@ -139,6 +144,10 @@ if __name__ == "__main__":
                 print("MP2 loss", np.linalg.norm(con.MP2[2] - con.MP2_THC[2]))
                 print(con.E[2].shape)
                 print("")
+                
+                print("max + median X values:", np.max(np.abs(con.X_mo)), np.median(np.abs(con.X_mo)))
+                print("max + median Z values:", np.max(np.abs(con.Z)), np.median(np.abs(con.Z)))
+
             
             data = build_thc_graph(con)
             dataset.append(data)

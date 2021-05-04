@@ -38,6 +38,29 @@ def build_qm7(basis):
         mols.append(mol)
     return mols
 
+def build_toy(basis, size = 20):
+    
+    mols = []
+    for i in range(size):
+        mol = gto.Mole(symmetry=False)
+
+        x = 0.5 + 2 * np.random.rand()
+        atoms=[['C', (0, 0, 0)],
+                  ['H', (x ,  x,  x)],
+                  ['H', (-x, -x,  x)],
+                  ['H', (-x,  x, -x)],
+                  ['H', ( x, -x, -x)]]
+
+        mol.atom = atoms
+        mol.verbose = 0
+        mol.symmetry = False
+        mol.spin = 0
+        mol.basis = basis
+        mol.unit = "Bohr" #QM7 coordinate unit
+
+        mols.append(mol)
+    return mols
+
 
 def vertex_index(i, j, n):
     r = n * (n+1) / 2 - (n-i) * (n-i+1) / 2
@@ -144,7 +167,7 @@ def build_thc_graph(con):
     E_mask = np.zeros(V, dtype=bool)
     
     ### build vertices ###
-    
+        
     typ_arr = np.array([1, 0, 0])
     for i in range(M):
         for j in range(i,M):
@@ -152,7 +175,7 @@ def build_thc_graph(con):
             features = [F1[i], F1[j], F2[i,j], np.zeros(L3), typ_arr, 0, 0]
             G_V[v] = concat(features)
             
-            if con.mo_occ[i]>0 and con.mo_occ[j]==0:
+            if con.mo_occ[i]>0 and con.mo_occ[j]==0:                
                 E_mask[v] = 1
     
     typ_arr = np.array([0, 1, 0])
