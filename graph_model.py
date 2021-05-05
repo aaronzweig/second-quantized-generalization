@@ -111,8 +111,10 @@ class THCNet(nn.Module):
         self.l2 = nn.Linear(hidden_dim * heads, hidden_dim)
 #         self.conv2 = TransformerConv(hidden_dim, hidden_dim, heads = heads, edge_dim = edge_dim)
         self.l3 = nn.Linear(hidden_dim * heads, 1)
+
+        self.conv1 = GATConv(hidden_dim, hidden_dim, heads = heads)
                 
-        self.conv1 = CGConv(hidden_dim, hidden_dim, edge_dim)
+#        self.conv1 = CGConv(hidden_dim, hidden_dim, edge_dim)
 #         self.l1 = nn.Linear(hidden_dim, hidden_dim)
 #         self.conv2 = CGConv(hidden_dim, hidden_dim, edge_dim)
 #         self.l2 = nn.Linear(hidden_dim, 1)
@@ -120,6 +122,7 @@ class THCNet(nn.Module):
     def forward(self, data):
 
         x = F.relu(self.l1(data.x))
+        x = F.relu(self.conv1(x, data.edge_index))
 #         x = F.relu(self.conv1(x, data.edge_index, data.edge_attr))
 #         x = F.relu(self.l2(x))
 #         x = F.relu(self.conv2(x, data.edge_index, data.edge_attr))

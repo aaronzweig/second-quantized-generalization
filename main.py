@@ -83,7 +83,7 @@ def train(model, loader, lr = 0.003, iterations = 10, verbose = False, lamb = 1.
 
         batch_loss = np.mean(np.array([l[0] for l in batch_losses]))
         losses.append(batch_loss)
-        if verbose:
+        if verbose and i % int(iterations/100) == 0:
             for loss, scalar_loss, dummy_loss in batch_losses:
                 print("timestep: {}, loss: {:e}, scalar_loss: {:e}, dummy_loss: {:e}".format(i, loss, scalar_loss, dummy_loss))
 
@@ -123,8 +123,8 @@ if __name__ == "__main__":
 
     if args.folder_name == "":
 
-#         mols = build_qm7(args.basis)
-        mols = build_toy(args.basis)
+        mols = build_qm7(args.basis)
+#        mols = build_toy(args.basis)
         mols = mols[:args.dataset_size]
         kwargs = {'grid_points_per_atom': args.grid_points_per_atom,
                   'epsilon_qr': args.epsilon_qr,
@@ -142,9 +142,9 @@ if __name__ == "__main__":
                 print("E loss", np.linalg.norm(con.E[2] - con.E_THC[2]))
                 print("MP2_J loss", np.linalg.norm(con.MP2[0] - con.MP2_THC[0]))
                 print("MP2 loss", np.linalg.norm(con.MP2[2] - con.MP2_THC[2]))
+                print("True MP2", con.MP2)
                 print(con.E[2].shape)
-                print("")
-                
+                print("")                
                 print("max + median X values:", np.max(np.abs(con.X_mo)), np.median(np.abs(con.X_mo)))
                 print("max + median Z values:", np.max(np.abs(con.Z)), np.median(np.abs(con.Z)))
 
